@@ -3,6 +3,7 @@ from flask import jsonify, request
 from flask.views import MethodView
 from flask_smorest import Blueprint, abort
 from db import stores
+from schemas import StoreSchema
 
 blp = Blueprint("stores", __name__, description="Operations on stores")
 
@@ -15,14 +16,15 @@ class Store(MethodView):
             return jsonify({"message": "store not found"}), 404
 
     def delete(self, store_id):
-        if id in stores:
+        if store_id in stores:
             del stores[store_id]
             return jsonify({"message": "store deleted"})
         else:
             abort(404, message="store not found")
 
 @blp.route("/store")
-class Stores(MethodView):
+class StoreList(MethodView):
+    @blp.arguments(StoreSchema)
     def post(self):
         store_data = request.get_json()
         store_id = uuid.uuid4().hex
