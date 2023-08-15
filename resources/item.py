@@ -1,70 +1,58 @@
-
 import uuid
 from flask import jsonify, request
 from flask.views import MethodView
 from flask_smorest import Blueprint, abort
-from db import stores, items
-from schemas import ItemSchema, ItemUpdateSchema, StoreSchema
+from resources.schemas import ItemSchema, ItemUpdateSchema
+from models.item import ItemModel
+from db import db
+from sqlalchemy.exc import SQLAlchemyError
 
 blp = Blueprint("Items", __name__, description="Operations on items")
 
-@blp.route("/item/<string:store_id>")
+@blp.route("/item/<string:item_id>")
 class Item(MethodView):
     @blp.response(200, ItemSchema)
     def get(self, item_id):
-        try:
-            return jsonify(items[item_id])
-        except IndexError:
-            return jsonify({"message": "store not found"}), 404
+        item = ItemModel.query.get_or_404(item_id)
+        return item
 
     def delete(self, item_id):
-        if id in items:
-            del items[item_id]
-            return jsonify({"message": "store deleted"})
+        item = ItemModel.query.get_or_404(item_id)
+        db.session.delete(item)
+        db.session.commit()
+        return "", 204
+
+    @blp.arguments(ItemUpdateSchema)
+    @blp.response(200, ItemSchema)
+    def put(self, item_data, item_id):
+        item = ItemModel.query.get(item_id)
+        if item:
+            item.price = item_data["price"]
+            item.name = item_data["name"]
         else:
-            abort(404, message="store not found")
+            item = ItemModel(id=item_id, **item_data)
+        
+        db.session.add(item)
+        db.session.commit()
 
-    def put(self, item_id):
-        item_data = request.get_json()
-        if (
-            "name" not in item_data
-            or "price" not in item_data
-        ):
-            abort(400, message="missing data")
-
-        # for item in items.values():
-        #     if item["store_id"] == item_data["store_id"] and item["name"] == item_data["name"]:
-        #         abort(400, message="item already exists")    
-
-        # new_item = {**item_data, "id": item_id}
-        # items[item_id] = new_item
-        # return jsonify(new_item), 201
-        try:
-            item = items[item_id]
-            item |= item_data
-            return item
-        except IndexError:
-            abort(404, message="item not found")
+        return item
 
 @blp.route("/item")
 class ItemList(MethodView):
     @blp.response(200, ItemSchema(many=True)) #can return multiple items
     def get(self):
         # return {"items": list(items.values())} # pre @blp.response
-        return items.values()
+        # return items.values()
+        return ItemModel.query.all()
     
     @blp.arguments(ItemSchema)    
-    def post(self):
-        item_data = request.get_json()
-        if("price" not in item_data or "name" not in item_data or "store_id" not in item_data):
-            abort(400, message="missing data")
+    def post(self, item_data):
+        item = ItemModel(**item_data)
 
-        for item in items.values():
-            if item["store_id"] == item_data["store_id"] and item["name"] == item_data["name"]:
-                abort(400, message="item already exists")
+        try:
+            db.session.add(item)
+            db.session.commit()
+        except SQLAlchemyError as e:
+            abort(400, message="item already exists")
 
-        item_id = uuid.uuid4().hex
-        new_item = {**item_data, "id": item_id}
-        items[item_id] = new_item
-
-        return new_item, 201
+        return item.json(), 201

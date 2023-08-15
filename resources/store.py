@@ -1,36 +1,45 @@
 import uuid
-from flask import jsonify, request
+from flask import request
 from flask.views import MethodView
 from flask_smorest import Blueprint, abort
-from db import stores
-from schemas import StoreSchema
+from resources.schemas import ItemSchema, StoreSchema
+from models.store import StoreModel
+from db import db
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+
 
 blp = Blueprint("stores", __name__, description="Operations on stores")
 
+
 @blp.route("/store/<string:store_id>")
 class Store(MethodView):
+    @blp.response(200, StoreSchema)
     def get(self, store_id):
-        try:
-            return jsonify(stores[store_id])
-        except IndexError:
-            return jsonify({"message": "store not found"}), 404
+        store = StoreModel.query.get_or_404(store_id)
+        return store
 
     def delete(self, store_id):
-        if store_id in stores:
-            del stores[store_id]
-            return jsonify({"message": "store deleted"})
-        else:
-            abort(404, message="store not found")
+        store = StoreModel.query.get_or_404(store_id)
+        db.session.delete(store)
+        db.session.commit()
+        return "", 204
+
 
 @blp.route("/store")
 class StoreList(MethodView):
     @blp.arguments(StoreSchema)
-    def post(self):
-        store_data = request.get_json()
-        store_id = uuid.uuid4().hex
-        new_store = {**store_data, "id": store_id}
-        stores[store_id] = new_store
-        return jsonify(new_store), 201
-    
+    @blp.response(201, StoreSchema)
+    def post(self, store_data):
+        store = StoreModel(**store_data)
+        try:
+            db.session.add(store)
+            db.session.commit()
+        except IntegrityError as e: #IntegrityError is when you try to insert a duplicate item
+            abort(400, message="item already exists")
+        except SQLAlchemyError as e:
+            abort(400, message="item already exists")
+        return store
+
+    @blp.response(200, StoreSchema(many=True))
     def get(self):
-        return jsonify({"stores": list(stores.values())})
+        return StoreModel.query.all()

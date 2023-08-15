@@ -3,10 +3,12 @@ from db import db
 class ItemModel(db.Model):
     __tablename__ = "items"
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), nullable=False)
+    name = db.Column(db.String(80), nullable=False, unique=True)
     price = db.Column(db.Float(precision=2), nullable=False)
     store_id = db.Column(db.Integer, db.ForeignKey("stores.id"), nullable=False)
+
     store = db.relationship("StoreModel", back_populates="items")
+    tags = db.relationship("TagModel", secondary="item_tags", back_populates="items")
 
     def __init__(self, name, price, store_id):
         self.name = name
@@ -27,13 +29,9 @@ class ItemModel(db.Model):
         return cls.query.all() # SELECT * FROM items
     
     def save_to_db(self):
-        # session.add(self)
-        # session.commit()
         db.session.add(self)
         db.session.commit()
     
     def delete_from_db(self):
-        # session.delete(self)
-        # session.commit()
         db.session.delete(self)
         db.session.commit()
