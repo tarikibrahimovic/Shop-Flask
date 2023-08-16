@@ -1,11 +1,19 @@
 import os
-from flask import Flask
+import secrets
+from flask import Flask, jsonify
 from flask_smorest import Api
 from db import db
 import models
 from resources.item import blp as ItemBlueprint
 from resources.store import blp as StoreBlueprint
 from resources.tag import blp as TagBlueprint
+from resources.user import blp as UserBlueprint
+from flask_jwt_extended import JWTManager
+from flask_migrate import Migrate
+
+from blocklist import BLOCKLIST
+
+
 
 def create_app(db_url=None):
     app = Flask(__name__)
@@ -16,104 +24,62 @@ def create_app(db_url=None):
     app.config["OPENAPI_VERSION"] = "3.0.3"
     app.config["OPENAPI_URL_PREFIX"] = "/"
     app.config["OPENAPI_SWAGGER_UI_PATH"] = "/swagger-ui"
-    app.config["OPENAPI_SWAGGER_UI_URL"] = "https://cdnjs.jsdelivr.net/npm/swagger-ui-dist/"
-    app.config["SQLALCHEMY_DATABASE_URI"] = db_url or os.getenv("DATABASE_URL", "sqlite:///data.db")
+    app.config[
+        "OPENAPI_SWAGGER_UI_URL"
+    ] = "https://cdnjs.jsdelivr.net/npm/swagger-ui-dist/"
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url or os.getenv(
+        "DATABASE_URL", "sqlite:///data.db"
+    )
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     db.init_app(app)
 
     api = Api(app)
+    jwt = JWTManager(app)
+    migrate = Migrate(app, db)
+    app.config["JWT_SECRET_KEY"] = "20809060277819862769801159806111523504"
+
+    @jwt.token_in_blocklist_loader
+    def check_if_token_in_blocklist(jwt_header, jwt_payload):
+        return jwt_payload["jti"] in BLOCKLIST #checks every time and blocks if token is in blocklist (user logged out)
+    
+    @jwt.revoked_token_loader
+    def revoked_token_callback(jwt_header, jwt_payload):
+        return jsonify({"message": "The token has been revoked"}), 401 #this is the message that will be sent to the user if the token is in the blocklist
+
+    @jwt.needs_fresh_token_loader
+    def token_not_fresh_callback(jwt_header, jwt_payload):
+        return jsonify({"message": "The token is not fresh"}), 401
+    
+    @jwt.additional_claims_loader
+    def add_claims_to_jwt(identity):
+        if identity == 1:
+            return {"is_admin": True}
+        return {"is_admin": False}
+
+    @jwt.expired_token_loader
+    def expire_token_callback(jwt_header, jwt_payload):
+        return jsonify({"message": "The token has expired"}), 401
+    
+    @jwt.invalid_token_loader
+    def invalid_token_callback(error):
+        return jsonify({"message": "Signature verification failed"}), 401
+    
+    @jwt.unauthorized_loader
+    def missing_token_callback(error):
+        return jsonify({"message": "Request does not contain an access token"}), 401   
+    
 
     # @app.before_first_request
     # def create_tables():
     #     db.create_all()#this is going to run only if there is no tables
-    #depricated
+    # depricated
 
-    with app.app_context():
-        db.create_all()
-
+    # with app.app_context():
+    #     db.create_all()
 
     api.register_blueprint(StoreBlueprint)
     api.register_blueprint(ItemBlueprint)
     api.register_blueprint(TagBlueprint)
+    api.register_blueprint(UserBlueprint)
 
     return app
-
-# @app.get("/store")
-# def get_stores():
-#     return jsonify({"stores": list(stores.values())})
-#     # return {'stores' : stores}
-
-
-# @app.post("/store")
-# def post_store():
-#     store_data = request.get_json()
-#     store_id = uuid.uuid4().hex
-#     new_store = {**store_data, "id": store_id}
-#     stores[store_id] = new_store
-#     return jsonify(new_store), 201
-
-
-# @app.post("/item")
-# def create_item():
-#     item_data = request.get_json()
-#     item_id = uuid.uuid4().hex
-
-#     if (
-#         "store_id" not in item_data
-#         or "name" not in item_data
-#         or "price" not in item_data
-#     ):
-#         abort(400, message="missing data")
-
-#     for item in items.values():
-#         if item["store_id"] == item_data["store_id"] and item["name"] == item_data["name"]:
-#             abort(400, message="item already exists")    
-
-#     new_item = {**item_data, "id": item_id}
-#     items[item_id] = new_item
-#     return jsonify(new_item), 201
-
-
-# @app.get("/store/<string:id>")
-# def get_store(id):
-#     try:
-#         return jsonify(stores[id])
-#     except IndexError:
-#         return jsonify({"message": "store not found"}), 404
-
-
-# @app.get("/items")
-# def get_items():
-#     return jsonify({"items": list(items.values())})
-
-
-# @app.get("/item/<string:id>")
-# def get_item_in_store(id):
-#     # try:
-#     #     return jsonify(items[id])
-#     # except IndexError:
-#     #     abort(404, message='item not found')
-#     if id in items:
-#         return jsonify(items[id])
-#     else:
-#         abort(404, message="item not found")
-
-
-# @app.delete("/store/<string:id>")
-# def delete_store(id):
-#     if id in stores:
-#         del stores[id]
-#         return jsonify({"message": "store deleted"})
-#     else:
-#         abort(404, message="store not found")
-
-
-# @app.patch("/store/<string:id>")
-# def update_store(id):
-#     store_data = request.get_json()
-#     if id in stores:
-#         store = stores[id]
-#         store.update(store_data)
-#         return jsonify(store)
-#     else:
-#         abort(404, message="store not found")

@@ -39,3 +39,8 @@ class TagAndItemSchema(Schema):
     message = fields.String()
     item = fields.Nested(ItemSchema)
     tag = fields.Nested(TagSchema)
+
+class UserSchema(Schema):
+    id = fields.Int(dump_only=True)
+    username = fields.String(required=True)
+    password = fields.String(required=True, load_only=True)#load_only=True means that this field is only for loading, not for dumping
